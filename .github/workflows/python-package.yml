@@ -33,7 +33,8 @@ jobs:
     needs: [lock_file]
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
       - run: uvx ruff format --check .
   type_consistency:
     runs-on: ubuntu-latest
