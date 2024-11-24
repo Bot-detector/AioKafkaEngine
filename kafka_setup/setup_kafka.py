@@ -35,6 +35,11 @@ def create_topics():
                 num_partitions=1,
                 replication_factor=1,
             ),
+            NewTopic(
+                name="produce_topic",
+                num_partitions=1,
+                replication_factor=1,
+            ),
         ]
     )
 
