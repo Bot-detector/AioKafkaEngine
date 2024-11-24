@@ -1,38 +1,62 @@
 
 # AsyncKafkaEngine
-
-AsyncKafkaEngine is an asynchronous Kafka consumer and producer package built using the aiokafka library. This package allows efficient and scalable message handling with Kafka by providing classes for consuming and producing messages asynchronously.
-Features
-- Asynchronous Kafka consumer and producer
-- JSON message serialization and deserialization
-- Internal message queue management
-- Periodic logging of message throughput
-- Graceful shutdown of consumer and producer
+AsyncKafkaEngine is a wrapper around the aiokafka package.
+ 
+its build with the idea of decoupling the reading & batching task from your main application task, this way the queue of batches is always full and reading from kafka is not being blocked by the work of your application logic.
 
 # Installation
-
-Install the package using pip:
-
+Installing the package using uv
 ```bash
-pip install AsyncKafkaEngine
+uv add AioKafkaEngine
 ```
+Install the package using pip:
+```bash
+pip install AioKafkaEngine
+```
+
 # Usage
 ## ConsumerEngine
 
-The ConsumerEngine class manages the consumption of messages from Kafka topics asynchronously and places them into an internal queue. It also logs consumption statistics periodically.
+The ConsumerEngine class manages the consumption of messages from Kafka topics asynchronously and places them into an queue. Your application can consume the queue.
 Example
 
 ```python
 import asyncio
-from AsyncKafkaEngine import ConsumerEngine
+from AioKafkaEngine import ConsumerEngine
+from aiokafka import AIOKafkaConsumer
+import json
+
+async def work(queue):
+    message = await queue.get()
+    print(message)
 
 async def main():
-    consumer = ConsumerEngine(
-        bootstrap_servers='localhost:9092', 
-        group_id='my-group', 
-        report_interval=5
+    """
+    Test that the consumer fetches and processes a single batch of messages.
+    """
+    test_queue = asyncio.Queue()
+
+    # Using the mock setup, getmany should return two messages
+    engine = ConsumerEngine(
+        consumer=AIOKafkaConsumer(
+            *["test_topic"],
+            bootstrap_servers="localhost:9092",
+            group_id="my_group",
+            value_deserializer=lambda x: json.loads(x.decode("utf-8")),
+            auto_offset_reset="earliest",
+        ),
+        queue=test_queue,
+        batch_size=10,
+        timeout=1,
     )
-    await consumer.start_engine(['my_topic'])
+    await engine.start()
+    consume_task = asyncio.create_task(engine.consume())
+    
+    # create workers
+    workers = [asyncio.create_task(work(queue)) for _ in range(10)]
+
+    # will never exit
+    await asyncio.gather(consume_task, *workers)
 
 asyncio.run(main())
 ```
@@ -42,60 +66,46 @@ The ProducerEngine class manages the production of messages to a Kafka topic asy
 Example
 
 ```python
-
 import asyncio
-from AsyncKafkaEngine import ProducerEngine
+from AioKafkaEngine import ProducerEngine
+from aiokafka import AIOKafkaProducer
+import json
+
+async def work(queue):
+    await queue.put(item={"key": 1})
 
 async def main():
-    producer = ProducerEngine(
-        bootstrap_servers='localhost:9092', 
-        report_interval=5
-    )
-    await producer.start_engine('my_topic')
+    """
+    Test that the consumer fetches and processes a single batch of messages.
+    """
+    queue = asyncio.Queue()
+    await queue.put(item={"key": "k", "key2": 2})
 
+    # Using the mock setup, getmany should return two messages
+    engine = ProducerEngine(
+        producer=AIOKafkaProducer(
+            bootstrap_servers="localhost:9092",
+            value_serializer=lambda v: json.dumps(v).encode(),
+            acks="all",
+        ),
+        queue=queue,
+        topic="produce_topic",
+    )
+    await engine.start()
+
+    produce_task = asyncio.create_task(engine.produce())
+    
+    # create workers
+    workers = [asyncio.create_task(work(queue)) for _ in range(10)]
+
+    # will never exit
+    await asyncio.gather(produce_task, *workers)
 asyncio.run(main())
 ```
-# API
-## ConsumerEngine
-```
-    __init__(bootstrap_servers, group_id=None, report_interval=5, queue_size=None)
-        bootstrap_servers: Kafka server addresses.
-        group_id: Consumer group ID (optional).
-        report_interval: Interval for logging consumption statistics.
-        queue_size: Maximum size of the internal message queue (optional).
-
-    async start_engine(topics)
-        topics: List of Kafka topics to consume from.
-
-    async stop_engine()
-        Stops the consumer gracefully.
-
-    get_queue()
-        Returns the internal queue holding consumed messages.
-```
-## ProducerEngine
-```
-    __init__(bootstrap_servers, report_interval=5, queue_size=None)
-        bootstrap_servers: Kafka server addresses.
-        report_interval: Interval for logging production statistics.
-        queue_size: Maximum size of the internal message queue (optional).
-
-    async start_engine(topic)
-        topic: Kafka topic to produce messages to.
-
-    async stop_engine()
-        Stops the producer gracefully.
-
-    get_queue()
-        Returns the internal queue holding messages to be sent.
-```
-# Logging
-
-The package uses the logging module to log debug information about the number of messages consumed and produced per report interval. Configure logging in your application as needed.
 
 # Contributing
-
 Contributions are welcome! Please submit a pull request or open an issue on GitHub.
+
 # License
 
 This project is licensed under the BSD 2-Clause License.
