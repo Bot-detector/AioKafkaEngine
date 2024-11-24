@@ -46,7 +46,7 @@ jobs:
       - run: uv run pyright src/
   tests:
     runs-on: [self-hosted, "hetzner"]
-    needs: [linting, formatting]
+    needs: [linting, formatting, type_consistency]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -61,7 +61,7 @@ jobs:
       - run: uv run pytest -v --durations=0 --cov --cov-report=xml
   build_and_deploy:
     runs-on: [self-hosted, "hetzner"]
-    needs: [linting, formatting, type_consistency, tests]
+    needs: [tests]
     # Run only on manual trigger
     if: ${{ github.event_name == 'workflow_dispatch' }}
     environment: release
